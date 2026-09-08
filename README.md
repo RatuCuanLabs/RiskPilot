@@ -1,436 +1,543 @@
 RiskPilot
 
-AI Portfolio Risk & Execution Agent for Binance AgentOS
+An AI trading decision and risk-intelligence layer for Binance AgentOS.
 
-RiskPilot is a risk-first AI portfolio agent designed to inspect a Binance portfolio, identify concentration risk, explain why the risk matters, stress-test the portfolio, propose a controlled rebalance, require user confirmation, and verify the execution result.
+«“RiskPilot doesn't just tell AI what to trade. It puts risk intelligence and safety between an AI decision and execution.”»
 
-«Don't trade first. Understand the risk first.»
+RiskPilot is a deterministic decision-and-safety layer between an AI agent and a market/execution capability layer.
+
+It evaluates technical momentum, portfolio and leveraged risk, enforces non-overridable safety limits, simulates risk mitigation for dangerous positions, and requires explicit human confirmation before a state-changing action.
+
+The current competition baseline is dry-run only. No live Binance order is placed.
 
 ---
 
-🚀 What RiskPilot Does
+Why RiskPilot?
 
-RiskPilot turns a simple trading request into a controlled risk-management workflow:
+A trading AI should not only answer:
 
-User Request
-     │
-     ▼
-Portfolio Audit
-     │
-     ▼
-Risk Engine
-     │
-     ▼
-WHY / Explanation
-     │
-     ▼
+«“What should I trade?”»
+
+It should also understand:
+
+«“Is it safe to act?”»
+
+RiskPilot is designed for users who need a multifunctional, risk-aware agent layer rather than a simple indicator or signal bot.
+
+It supports different stages of the trading journey:
+
+- Asset & Portfolio Risk Management
+  Understand how an asset or position affects portfolio risk and exposure.
+
+- Investment & Entry Assistance
+  Evaluate whether a potential investment or new position is supported by current market data and risk conditions.
+
+- Explainable Recommendations
+  Provide decisions and recommendations together with the reasons behind them, based on available market and account data.
+
+- Risk Prevention
+  Detect dangerous conditions and prevent actions that violate hard safety boundaries.
+
+- Risk Mitigation Assistance
+  When a leveraged position is already dangerous, simulate potential risk-reducing actions and identify an effective reduction before execution.
+
+- Human-in-the-Loop Execution Safety
+  Require explicit confirmation and a fresh final safety check before a state-changing action can proceed.
+
+- Future Hedge Support
+  The architecture includes a hedge evaluation interface, while full hedge optimization and selection remain outside the current Phase 1–4 baseline.
+
+The core idea
+
+RiskPilot is not designed to make the AI trade autonomously.
+
+It gives the AI a risk-aware decision, safety, mitigation, confirmation, and verification layer before money-moving actions.
+
+---
+
+1. Current Scope: Phase 1 → Phase 4
+
+The implemented competition baseline consists of Phase 1 through Phase 4.
+
+There is no Phase 5 in this baseline.
+
+Phase| What it adds
+Phase 1| Momentum Engine, Decision Engine, token/amount validation, conversational trade state machine, dry-run order executor
+Phase 1.5| Hard safety checks, 20%-of-total-capital allocation limit, portfolio snapshots, projected exposure, structured trade results, HOLD override flow
+Phase 2| Leveraged risk handling for Margin, USDⓈ-M Futures, and COIN-M Futures
+Phase 3| Risk Mitigation Engine — simulates risk-reducing actions and recommends the smallest effective reduction
+Phase 4| Connects mitigation to confirmation, final safety checking, dry-run execution, and verification
+
+---
+
+2. Architecture
+
+                    ┌─────────────────────┐
+                    │       Claude        │
+                    │ Conversational AI   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    Binance AgentOS  │
+                    │ Market / Account /  │
+                    │ Execution Interfaces│
+                    └──────────┬──────────┘
+                               │
+                               ▼
+              ┌─────────────────────────────────┐
+              │           RiskPilot             │
+              │                                 │
+              │  Momentum Engine                │
+              │        ↓                        │
+              │  Decision Engine                │
+              │        ↓                        │
+              │  Risk & Safety Layer            │
+              │        ↓                        │
+              │  Mitigation Engine              │
+              │        ↓                        │
+              │  Confirmation                   │
+              │        ↓                        │
+              │  Final Safety Check             │
+              │        ↓                        │
+              │  DryRunOrderExecutor            │
+              │        ↓                        │
+              │  Verification                   │
+              └────────────────┬────────────────┘
+                               │
+                               ▼
+                       Human confirmation
+                               │
+                               ▼
+                         Dry-run only
+
+The responsibilities are intentionally separated:
+
+Claude
+→ understands user intent and manages the conversation
+
+AgentOS
+→ provides market, account and execution capabilities/interfaces
+
+RiskPilot
+→ evaluates momentum, risk, safety and mitigation
+
+Human
+→ confirms state-changing actions
+
+---
+
+3. Momentum Analysis — Phase 1
+
+RiskPilot evaluates the latest closed 1H candle using four independent conditions:
+
+- RSI(14) > 50
+- MACD line(12,26,9) > MACD signal
+- KDJ K(9,3,3) > D
+- Current volume > 20-period average volume
+
+Momentum scoring
+
+Conditions fulfilled| Momentum
+4/4| PLATINUM
+3/4| GOLD
+2/4| SILVER
+0–1/4| WAIT/HOLD
+
+The score is combination-agnostic: any 3 of 4 conditions produces GOLD, and any 2 of 4 produces SILVER.
+
+---
+
+4. Decision Engine — Phase 1
+
+RiskPilot produces three canonical decisions:
+
+- "EXECUTE"
+- "BUY WITH NOTE"
+- "WAIT/HOLD"
+
+Momentum| Risk| Decision
+PLATINUM (4/4)| LOW| "EXECUTE"
+GOLD (3/4)| LOW| "BUY WITH NOTE"
+SILVER (2/4)| LOW| "WAIT/HOLD"
+0–1/4| LOW| "WAIT/HOLD"
+Any| HIGH| "WAIT/HOLD"
+Any| MEDIUM| "WAIT/HOLD"
+
+Risk takes precedence over momentum.
+
+A strong momentum score does not automatically mean a trade is safe.
+
+---
+
+5. Portfolio & Allocation Safety — Phase 1.5
+
+Before a trade proceeds, RiskPilot evaluates portfolio state and allocation.
+
+Hard allocation limit
+
+Maximum allocation: 20% of total trading capital.
+
+This is calculated against total trading capital, not merely the currently available USDT.
+
+Example:
+
+Total trading capital:   $100
+Already deployed:         $80
+Available:                $20
+New allocation:            $20
+
+Allocation = $20 / $100 = 20%
+
+RiskPilot also calculates projected post-trade exposure.
+
+Portfolio snapshots are fetched on demand:
+
+1. During analysis
+2. Freshly immediately before execution
+
+There is no continuous or background portfolio monitoring in this baseline.
+
+---
+
+6. Hard Safety Boundary
+
+RiskPilot separates ordinary risk recommendations from non-overridable hard safety blocks.
+
+«HIGH risk is not automatically the same thing as a hard block.»
+
+"HIGH" risk causes the Decision Engine to recommend "WAIT/HOLD".
+
+A hard block is stricter and prevents the action from proceeding.
+
+Hard safety conditions include:
+
+- Insufficient available balance
+- Invalid order
+- Unsupported symbol
+- Minimum-order or precision violation
+- Exceeding the explicit 20%-of-total-capital allocation limit
+- An explicit hard post-trade exposure limit, where defined
+- "CRITICAL" leveraged margin/liquidation risk
+- Required leveraged-risk data being unavailable and therefore classified as "UNKNOWN"
+
+A hard block cannot be bypassed with a “trading anyway?” confirmation.
+
+---
+
+7. Leveraged Risk Handling — Phase 2
+
+RiskPilot supports risk handling for:
+
+- "MARGIN_SPOT"
+- "USD_M_FUTURES"
+- "COIN_M_FUTURES"
+
+Risk status is supplied by an external provider interface.
+
+RiskPilot does not invent a liquidation formula, maintenance-margin formula, or margin-ratio-to-risk mapping in this baseline.
+
+If required risk classification is unavailable, it becomes "UNKNOWN" rather than being guessed.
+
+Hard safety rules
+
+CRITICAL + OPEN/ADD
+→ HARD BLOCK
+
+UNKNOWN + OPEN/ADD
+→ HARD BLOCK
+
+HEDGE with unknown post-trade risk
+→ HARD BLOCK
+
+CRITICAL + REDUCE/CLOSE
+→ ALLOWED
+
+SPOT
+→ NOT_APPLICABLE
+
+A "PLATINUM" momentum score cannot bypass a leveraged "CRITICAL" or "UNKNOWN" hard block.
+
+Risk safety remains independent of momentum.
+
+---
+
+8. Risk Mitigation — Phase 3
+
+The killer feature
+
+RiskPilot does not stop at:
+
+«“This position is dangerous.”»
+
+It can also simulate:
+
+«“What is the smallest risk-reducing action that could help?”»
+
+The Mitigation Engine:
+
+1. Detects a dangerous leveraged position.
+2. Generates candidate reduction sizes.
+3. Simulates the projected risk for each candidate.
+4. Selects the smallest candidate that strictly improves the risk state.
+5. Returns a mitigation recommendation rather than executing it.
+
+If no candidate improves the risk state, RiskPilot returns:
+
+"NO_EFFECTIVE_MITIGATION"
+
+A hedge is not automatically assumed to be safer. Hedge evaluation remains "UNSUPPORTED" in this baseline.
+
+Verified demonstration scenario
+
+Position:          0.10 BTC
+Current risk:      CRITICAL
+
+Recommended action:
+PARTIAL_CLOSE
+
+Proposed reduction:
+0.04 BTC
+
+Projected risk:
+CRITICAL → WARNING
+
+Phase 2 TradeIntent:
+REDUCE
+
+Execution performed:
+False
+
+No live Binance order was sent.
+
+The 0.04 BTC recommendation is produced by the verified mitigation candidate simulation.
+
+---
+
+9. Confirmation Boundary — Phase 4
+
+A mitigation recommendation does not automatically execute.
+
+The action must pass the complete safety boundary:
+
+Risk Mitigation Recommendation
+              ↓
+      TradeIntent.REDUCE
+              ↓
+    Explicit User Confirmation
+              ↓
+     Fresh Final Safety Check
+              ↓
+       DryRunOrderExecutor
+              ↓
+          Verification
+
+Dedicated integration tests prove that:
+
+- A recommendation alone never invokes the executor.
+- Confirmation is mandatory.
+- Skipping confirmation raises an error.
+- Stale or duplicate confirmation is rejected.
+- "OPEN" under "CRITICAL" risk reaches "BLOCKED".
+- "REDUCE" under the same "CRITICAL" state can proceed.
+- Execution remains dry-run.
+- The resulting execution reports "status="SIMULATED"" and "is_live=False".
+
+The confirmation boundary is enforced by code, not merely described in the README.
+
+---
+
+10. Underlying Portfolio Risk Foundation
+
+RiskPilot also contains the underlying portfolio-risk foundation used by the project.
+
+Its existing workflow includes:
+
+Risk Audit
+    ↓
 Stress Test
-     │
-     ▼
+    ↓
 Rebalance Proposal
-     │
-     ▼
-User Confirmation
-     │
-     ▼
-AgentOS Permission
-     │
-     ▼
-Execution
-     │
-     ▼
+    ↓
+Confirmation
+    ↓
+Dry-run Execution
+    ↓
 Verification
-     │
-     ▼
-Final Risk Report
 
-The core principle is simple:
+The portfolio concentration model classifies exposure as:
 
-Risk assessment comes before execution.
+Concentration| Risk
+< 30%| LOW
+30–50%| MEDIUM
+≥ 50%| HIGH
 
----
+The foundation also provides stress testing, rebalance proposals, execution verification, and explainability through its WHY/reporting layer.
 
-🧠 Core Features
-
-1. Risk Audit
-
-RiskPilot evaluates portfolio concentration and identifies the largest position.
-
-Example:
-
-Total Value       : $10,000.00
-Largest Position  : BTC
-Largest Weight    : 60.00%
-Risk Level        : HIGH
-Recommended Action: REDUCE_CONCENTRATION
-
-2. WHY Explainability
-
-RiskPilot does not simply return a risk label.
-
-It explains why the portfolio is considered risky:
-
-BTC represents 60.00% of the portfolio.
-This exceeds the 50% high-risk concentration limit.
-
-A large allocation to one position can make the
-portfolio more vulnerable to a significant loss
-if that asset declines.
-
-3. Stress Testing
-
-RiskPilot can simulate portfolio-level market shocks.
-
-Example:
-
-Scenario       : All positions drop 20.0%
-Original Value : $10,000.00
-Stressed Value : $8,000.00
-Potential Loss : $2,000.00
-
-4. Rebalance Proposal
-
-Instead of immediately trading, RiskPilot creates a proposal.
-
-Example:
-
-BTC: 60.00% -> 50.00%
-Action: REDUCE
-Value Change: -$1,000.00
-
-5. Confirmation Gate
-
-Portfolio-changing actions require explicit user confirmation.
-
-Proposal
-   ↓
-User Confirmation
-   ↓
-Execution
-
-RiskPilot never treats a proposal as automatic permission to trade.
-
-6. Execution Safety
-
-The execution layer blocks unconfirmed requests:
-
-Unconfirmed → BLOCKED
-Confirmed   → READY
-
-Actual Binance execution is kept separate from the risk and proposal layers.
-
-7. Verification
-
-After execution, RiskPilot compares the expected result with the actual result.
-
-Expected Value : -$1,000.00
-Actual Value   : -$1,000.00
-Difference     : $0.00
-Status         : VERIFIED
-
-This creates a complete control loop:
-
-Assess → Explain → Propose → Confirm → Execute → Verify
+The Phase 1–4 trading layer builds on this foundation without turning it into a live autonomous trading system.
 
 ---
 
-🔌 Binance AgentOS Integration
+11. Testing
 
-RiskPilot is designed to work with Binance AgentOS / MCP.
+The complete verified test suite is:
 
-The AgentOS integration provides access to read-only portfolio and market information such as:
+PYTHONPATH=app python -m unittest discover -s tests -p "test*.py"
 
-- Spot account balances
-- Spot market prices
-- Futures positions
-- Futures account information
-- Wallet information
-- Market data
+Current status
 
-RiskPilot uses an adapter and bridge architecture so that Binance AgentOS responses can be converted into RiskPilot portfolio objects without coupling the risk engine directly to the external tool layer.
+222/222 tests passing
 
-Binance AgentOS / MCP
-          │
-          ▼
-    Binance Adapter
-          │
-          ▼
-     AgentOS Bridge
-          │
-          ▼
-      Risk Engine
-          │
-          ▼
-    RiskPilot Decision
+The project uses Python's built-in "unittest" framework.
 
-Read-only validation
+Component| Tests
+Underlying portfolio-risk foundation| 45
+Phase 1| 73
+Phase 1.5| 33
+Phase 2| 35
+Phase 3| 18
+Phase 4| 18
+Total| 222
 
-The AgentOS connection has been tested using:
-
-spot.getAccount
-spot.tickerPrice
-
-The test account returned an empty Spot portfolio and no trading or account-modifying action was performed.
+The Phase 4 count includes mitigation-workflow integration tests and dedicated confirmation-boundary integration tests.
 
 ---
 
-🛡️ Safety Architecture
+12. Dry-Run / Live Execution Boundary
 
-RiskPilot uses multiple independent safety layers.
+This baseline is intentionally conservative.
 
-┌─────────────────────────────┐
-│       User Request          │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│       Risk Assessment       │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│      Risk Explanation       │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│     Rebalance Proposal      │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│      User Confirmation      │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│     AgentOS Permission      │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│          Execute            │
-└──────────────┬──────────────┘
-               ▼
-┌─────────────────────────────┐
-│          Verify             │
-└─────────────────────────────┘
+Implemented
 
-This separation helps prevent an AI recommendation from becoming an unintended trade.
+- Deterministic risk analysis
+- Momentum analysis
+- Decision logic
+- Portfolio safety checks
+- Leveraged-risk safety boundary
+- Risk mitigation simulation
+- Human confirmation boundary
+- Final safety check
+- Dry-run execution
+- Verification
+- 222 automated tests
 
----
+Not implemented
 
-🏗️ Architecture
+- Live Binance order execution
+- Automated live mitigation
+- Background monitoring
+- Hedge optimization
+- Fee/funding-aware mitigation sizing
+- A real margin-ratio-to-risk formula
+- Network-calling provider implementations
 
-app/riskpilot/
-│
-├── risk/
-│   ├── portfolio.py
-│   ├── risk_limits.py
-│   ├── engine.py
-│   └── policy.py
-│
-├── binance/
-│   └── adapter.py
-│
-├── audit/
-│   └── auditor.py
-│
-├── stress/
-│   └── stress_test.py
-│
-├── rebalance/
-│   └── proposal.py
-│
-├── confirmation/
-│   └── gate.py
-│
-├── execution/
-│   └── executor.py
-│
-├── verification/
-│   └── verifier.py
-│
-├── agentos/
-│   └── bridge.py
-│
-├── report/
-│   └── formatter.py
-│
-├── why/
-│   └── explainer.py
-│
-└── demo/
-    └── run_demo.py
+"DryRunOrderExecutor" is the only concrete order-execution implementation in this baseline.
+
+It returns:
+
+status="SIMULATED"
+is_live=False
+
+and explicitly reports that no real order was sent.
+
+No claim in this repository should be interpreted as a live Binance trade being executed by RiskPilot.
 
 ---
 
-⚙️ Risk Model
+13. Demo
 
-The current MVP uses deterministic concentration thresholds:
-
-Largest Position| Risk Level| Action
-"< 30%"| LOW| "NO_ACTION"
-"30% - <50%"| MEDIUM| "MONITOR"
-"≥ 50%"| HIGH| "REDUCE_CONCENTRATION"
-
-The deterministic risk engine is intentionally separated from the AI layer.
-
-This means the AI can explain and orchestrate decisions without being the sole authority for the underlying risk calculation.
-
----
-
-🧪 Demo
-
-Run the local RiskPilot demo:
+Run the demo with:
 
 PYTHONPATH=app python -m riskpilot.demo.run_demo
 
-The demo demonstrates:
+The demonstration covers the underlying risk foundation and the Phase 1–4 trading layer.
 
-1. Portfolio risk audit
-2. 20% stress test
-3. Rebalance proposal
-4. Confirmation gate
-5. Dry-run execution
-6. Execution verification
+The Phase 3/4 demonstration shows:
 
-Expected result:
+CRITICAL leveraged position
+          ↓
+Risk Mitigation
+          ↓
+PARTIAL_CLOSE 0.04 BTC
+          ↓
+Projected CRITICAL → WARNING
+          ↓
+TradeIntent.REDUCE
+          ↓
+Human Confirmation
+          ↓
+Final Safety Check
+          ↓
+Dry-run Execution
+          ↓
+Verification
 
-=== RiskPilot Demo ===
-
-[1] RISK AUDIT
-Total value: $10,000.00
-Largest position: BTC
-Largest weight: 60.00%
-Concentration risk: HIGH
-Action: REDUCE_CONCENTRATION
-
-[2] STRESS TEST
-Scenario: All positions drop 20.0%
-Original value: $10,000.00
-Stressed value: $8,000.00
-Loss: $2,000.00
-
-[3] REBALANCE PROPOSAL
-BTC: 60.00% -> 50.00%
-
-[4] CONFIRMATION GATE
-Confirmed: False
-Confirmed: True
-
-[5] EXECUTION
-Status: READY
-
-[6] VERIFICATION
-Status: VERIFIED
-
-=== Demo Complete ===
+No live Binance order is sent.
 
 ---
 
-🧪 Testing
+14. Current Limitations / Future Work
 
-RiskPilot uses Python's built-in "unittest" framework.
+The following are intentionally not implemented in the competition baseline:
 
-Run the complete test suite:
+- Live execution of any kind
+- Automated/live mitigation execution
+- Hedge optimization
+- Fee/funding-aware sizing
+- Real margin-ratio-to-risk-status calculation
+- Continuous or background monitoring
 
-PYTHONPATH=app python -m unittest discover -s tests -v
+Provider interfaces exist for capabilities such as market data, account snapshots, leveraged-risk data, and order execution, but they do not contain network-calling implementations in this baseline.
 
-The current implementation contains comprehensive tests covering:
-
-- Risk engine
-- Risk policy
-- System prompt
-- Binance adapter
-- Portfolio audit
-- Stress testing
-- Rebalance proposals
-- Confirmation gate
-- Execution
-- Verification
-- AgentOS bridge
-- Report formatting
-- WHY explainability
+These limitations are explicit boundaries, not hidden functionality.
 
 ---
 
-🔐 Execution Philosophy
+15. Technical Philosophy
 
-RiskPilot follows three principles:
+RiskPilot deliberately separates AI conversation from deterministic risk decisions.
 
-1. Explain before acting
+Claude
+→ understands the conversation
 
-The system should explain the risk before proposing a portfolio-changing action.
+AgentOS
+→ provides capabilities and account/market access
 
-2. Confirm before executing
+RiskPilot
+→ evaluates risk, safety and mitigation
 
-A proposal is not permission.
+Human
+→ confirms state-changing actions
 
-User confirmation is required before execution.
+This separation is the core idea.
 
-3. Verify after executing
-
-An execution result should be checked against the expected outcome.
-
----
-
-🎯 Why RiskPilot?
-
-Many trading agents focus on:
-
-«"What should I trade?"»
-
-RiskPilot focuses on:
-
-«"What is the risk of my current portfolio, why does it matter, and what should happen before I trade?"»
-
-The goal is not to replace the trader.
-
-The goal is to give the trader a risk-aware control layer between intent and execution.
+The AI can suggest.
+RiskPilot evaluates.
+Safety rules can block.
+Mitigation can be simulated.
+The human confirms.
+Execution is verified.
 
 ---
 
-🛣️ Roadmap
+16. Status
 
-Future versions can extend RiskPilot with:
+Competition Baseline: Phase 1 → Phase 4
 
-- Multi-asset risk scoring
-- Volatility-aware position limits
-- Correlation analysis
-- Drawdown monitoring
-- Liquidity-aware execution
-- Slippage estimation
-- Futures leverage risk
-- Portfolio-level VaR
-- Automated monitoring
-- More advanced AgentOS execution
-- Historical risk analytics
-
----
-
-⚠️ Current Scope
-
-This project is an MVP / competition prototype.
-
-The current risk model focuses primarily on portfolio concentration. It is not intended to represent a complete institutional risk-management system.
-
-Execution integration is deliberately separated from the deterministic risk engine and currently uses a controlled interface/dry-run architecture.
+- ✅ 222/222 tests passing
+- ✅ Multifunctional risk-aware agent layer
+- ✅ Momentum and trading decision engine
+- ✅ Portfolio allocation safety
+- ✅ Leveraged-risk hard safety boundary
+- ✅ Risk mitigation simulation
+- ✅ Confirmation boundary
+- ✅ Dry-run execution
+- ✅ Verification
+- 🔒 Code freeze
+- 🚫 No live Binance order execution
 
 ---
 
-🏁 Project Status
+RiskPilot
 
-RiskPilot — Phase 16 / Final MVP
-
-Core pipeline implemented:
-
-Risk
-→ Policy
-→ Audit
-→ Stress Test
-→ WHY
-→ Proposal
-→ Confirmation
-→ Execution
-→ Verification
-→ AgentOS Bridge
-→ Report
-
-The project is designed around one principle:
-
-Risk first. Execute second.
+Putting risk intelligence and safety between an AI decision and execution.
