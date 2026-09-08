@@ -72,17 +72,17 @@ Phase 4| Connects mitigation to confirmation, final safety checking, dry-run exe
 
 2. Architecture
 
-                    ┌────────────────┐
-                    │       Claude      │
-                    │ Conversational AI │
-                    └───--───┬───────┘
+                    ┌─────────────────┐
+                    │       Claude       │
+                    │ Conversational AI  │
+                    └────────┬────────┘
                                │
                                ▼
-                    ┌─────────────────────┐
+                    ┌──────────────────┐
                     │    Binance AgentOS  │
                     │ Market / Account /  │
                     │ Execution Interfaces│
-                    └──────────┬──────────┘
+                    └────────┬─────────┘
                                │
                                ▼
               ┌─────────────────────────────────┐
