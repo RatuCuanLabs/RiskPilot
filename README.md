@@ -86,7 +86,7 @@ Phase 4| Connects mitigation to confirmation, final safety checking, dry-run exe
                                │
                                ▼
               ┌─────────────────────────────────┐
-              │           RiskPilot             │
+              │           RiskPilot     │
               │                                 │
               │  Momentum Engine                │
               │        ↓                        │
