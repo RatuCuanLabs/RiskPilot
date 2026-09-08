@@ -6,6 +6,74 @@ from riskpilot.confirmation.gate import create_confirmation_request, confirm_act
 from riskpilot.execution.executor import create_execution_request, execute_request
 from riskpilot.verification.verifier import verify_execution
 
+from riskpilot.leverage.types import RiskStatus, MarketType
+from riskpilot.mitigation.simulation import ProjectedPositionState
+from riskpilot.trading.mitigation_workflow import evaluate_mitigation_workflow
+
+
+class _DemoMitigationSimulator:
+    """
+    Demo-only fixture standing in for a real (not-yet-wired) provider.
+    Fixed, hand-written quantity -> risk_status mapping — not a formula,
+    not live data. Exists purely so this walkthrough is deterministic.
+    """
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    def simulate(self, reduction_quantity: float) -> ProjectedPositionState:
+        status = self._mapping.get(round(reduction_quantity, 10), RiskStatus.UNKNOWN)
+        return ProjectedPositionState(quantity=reduction_quantity, risk_status=status)
+
+
+def run_phase3_mitigation_demo():
+    print("\n[7] PHASE 3 — RISK MITIGATION (SIMULATED, NOT LIVE)")
+    print("This section uses a hand-written demo fixture standing in for a")
+    print("real exchange data provider. It is not live account data, and")
+    print("nothing here places, modifies, or verifies a real order.")
+
+    position_symbol = "BTC"
+    position_quantity = 0.10
+    current_risk = RiskStatus.CRITICAL
+
+    # Fixture chosen to match the exact walkthrough requested: smallest
+    # candidate that flips CRITICAL -> WARNING is 0.04, matching the
+    # engine's real candidate set for a 0.10 position (0.01/0.02/0.04/0.06/0.08).
+    simulator = _DemoMitigationSimulator({
+        0.01: RiskStatus.CRITICAL,
+        0.02: RiskStatus.CRITICAL,
+        0.04: RiskStatus.WARNING,
+        0.06: RiskStatus.LOW,
+        0.08: RiskStatus.LOW,
+    })
+
+    print(f"\nPosition: {position_quantity} {position_symbol}")
+    print(f"Current risk: {current_risk.value}")
+
+    # Phase 4: route through the workflow integration layer rather than
+    # calling MitigationEngine directly — this is the same underlying
+    # engine call, plus the Phase 2 TradeIntent mapping and an
+    # informational (non-gating) Phase 2 hard-block check, all in one place.
+    workflow_result = evaluate_mitigation_workflow(
+        current_risk=current_risk,
+        position_quantity=position_quantity,
+        simulator=simulator,
+        market_type=MarketType.USD_M_FUTURES,
+    )
+    result = workflow_result.mitigation
+
+    print(f"\nMitigation status: {result.status.value}")
+    print(f"Recommended action: {result.recommended_action.value}")
+    print(f"Proposed reduction: {result.quantity} {position_symbol}")
+    print(f"Projected risk: {current_risk.value} -> {result.projected_risk.value}")
+    print("\n(This is a proposal only — it is simulated, not executed.)")
+
+    print(f"\nMaps to Phase 2 TradeIntent: {workflow_result.mapped_trade_intent.value}")
+    print(f"Phase 2 hard_block for this action: {workflow_result.would_be_hard_blocked} "
+          f"(risk-reducing actions remain allowed even under CRITICAL current risk)")
+    print(f"Execution performed: {workflow_result.execution_performed}")
+    print("No live Binance order was sent.")
+
 
 def main():
     positions = [
@@ -99,6 +167,8 @@ def main():
     print(f"Actual value: ${verification.actual_value:,.2f}")
     print(f"Difference: ${verification.difference:,.2f}")
     print(f"Message: {verification.message}")
+
+    run_phase3_mitigation_demo()
 
     print("\n=== Demo Complete ===")
 
